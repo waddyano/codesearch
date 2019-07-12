@@ -2,8 +2,9 @@
 
 ## To install this fork
 
-    go get github.com/junkblocker/codesearch/...
-
+    go get -u github.com/junkblocker/codesearch/cmd/cindex
+    go get -u github.com/junkblocker/codesearch/cmd/csearch
+    go get -u github.com/junkblocker/codesearch/cmd/cgrep
 
 ## Prebuilt binaries
 
