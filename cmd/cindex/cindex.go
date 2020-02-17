@@ -114,8 +114,17 @@ var (
 	}
 )
 
-func walk(arg string, symlinkFrom string, out chan string, logskip bool) {
+type walkStats struct {
+	nFiles   int
+	nSkipped int
+}
+
+func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, logskip bool) {
 	filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
+		stats.nFiles++
+		if stats.nFiles%10000 == 0 {
+			log.Printf("scanned %d files", stats.nFiles)
+		}
 		if basedir, elem := filepath.Split(path); elem != "" {
 			exclude := false
 			for _, pattern := range excludePatterns {
@@ -131,6 +140,7 @@ func walk(arg string, symlinkFrom string, out chan string, logskip bool) {
 			// Skip various temporary or "hidden" files or directories.
 			if info != nil && info.IsDir() {
 				if exclude {
+					stats.nSkipped++
 					if logskip {
 						if symlinkFrom != "" {
 							log.Printf("%s: skipped. Excluded directory", symlinkFrom+path[len(arg):])
@@ -142,6 +152,7 @@ func walk(arg string, symlinkFrom string, out chan string, logskip bool) {
 				}
 			} else {
 				if exclude {
+					stats.nSkipped++
 					if logskip {
 						if symlinkFrom != "" {
 							log.Printf("%s: skipped. Excluded file", symlinkFrom+path[len(arg):])
@@ -174,7 +185,7 @@ func walk(arg string, symlinkFrom string, out chan string, logskip bool) {
 							log.Printf("%s: skipped. Symlink could not be resolved", path)
 						}
 					} else {
-						walk(p, symlinkAs, out, logskip)
+						walk(p, stats, symlinkAs, out, logskip)
 					}
 					return nil
 				}
@@ -357,21 +368,32 @@ func main() {
 
 	go func() {
 		seen := make(map[string]bool)
+		nProcessed := 0
+		nAdded := 0
 		for {
 			select {
 			case path := <-walkChan:
 				if !seen[path] {
 					seen[path] = true
-					ix.AddFile(path)
+					if ix.AddFile(path) {
+						nAdded++
+					}
+					nProcessed++
+					if nProcessed%10000 == 0 {
+						log.Printf("added %d/%d files", nAdded, nProcessed)
+					}
 				}
 			case <-doneChan:
 				return
 			}
 		}
 	}()
+
+	var stats walkStats
+
 	for _, arg := range args {
 		log.Printf("index %s", arg)
-		walk(arg, "", walkChan, *logSkipFlag)
+		walk(arg, &stats, "", walkChan, *logSkipFlag)
 	}
 	doneChan <- true
 	log.Printf("flush index")
