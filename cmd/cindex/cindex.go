@@ -115,15 +115,20 @@ var (
 )
 
 type walkStats struct {
-	nFiles   int
-	nSkipped int
+	nFiles       int
+	nDirectories int
+	nSkipped     int
 }
 
 func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, logskip bool) {
 	filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
-		stats.nFiles++
-		if stats.nFiles%10000 == 0 {
-			log.Printf("scanned %d files", stats.nFiles)
+		if info != nil && info.IsDir() {
+			stats.nDirectories++
+		} else {
+			stats.nFiles++
+		}
+		if stats.nFiles > 0 && stats.nFiles%10000 == 0 {
+			log.Printf("scanned %d files, skipped %d", stats.nFiles, stats.nSkipped)
 		}
 		if basedir, elem := filepath.Split(path); elem != "" {
 			exclude := false
@@ -226,6 +231,7 @@ func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, log
 		}
 		return nil
 	})
+	log.Printf("finished scanning %d directories, %d files, skipped %d", stats.nDirectories, stats.nFiles, stats.nSkipped)
 }
 
 func main() {
@@ -363,7 +369,7 @@ func main() {
 	ix.MaxInvalidUTF8Ratio = *maxInvalidUTF8Ratio
 	ix.AddPaths(args)
 
-	walkChan := make(chan string)
+	walkChan := make(chan string, 10000)
 	doneChan := make(chan bool)
 
 	go func() {
@@ -371,20 +377,22 @@ func main() {
 		nProcessed := 0
 		nAdded := 0
 		for {
-			select {
-			case path := <-walkChan:
-				if !seen[path] {
-					seen[path] = true
-					if ix.AddFile(path) {
-						nAdded++
-					}
-					nProcessed++
-					if nProcessed%10000 == 0 {
-						log.Printf("added %d/%d files", nAdded, nProcessed)
-					}
-				}
-			case <-doneChan:
+			path := <-walkChan
+			if path == "" {
+				log.Printf("added %d/%d files", nAdded, nProcessed)
+				doneChan <- true
 				return
+			}
+
+			if !seen[path] {
+				seen[path] = true
+				if ix.AddFile(path) {
+					nAdded++
+				}
+				nProcessed++
+				if nProcessed%10000 == 0 {
+					log.Printf("added %d/%d files", nAdded, nProcessed)
+				}
 			}
 		}
 	}()
@@ -395,7 +403,10 @@ func main() {
 		log.Printf("index %s", arg)
 		walk(arg, &stats, "", walkChan, *logSkipFlag)
 	}
-	doneChan <- true
+	log.Printf("walk done %d", stats.nFiles)
+	//doneChan <- true
+	walkChan <- ""
+	<-doneChan
 	log.Printf("flush index")
 	ix.Flush()
 
