@@ -273,7 +273,7 @@ func (r *postMapReader) load() {
 		r.fileid = ^uint32(0)
 		return
 	}
-	r.d = r.ix.slice(r.ix.postData+r.offset+3, -1)
+	r.d = r.ix.slice(r.ix.postData+r.offset, -1)
 	r.oldid = ^uint32(0)
 	r.i = 0
 }
@@ -330,9 +330,6 @@ func (w *postDataWriter) trigram(t uint32) {
 }
 
 func (w *postDataWriter) fileid(id uint32) {
-	if w.count == 0 {
-		w.out.writeTrigram(w.t)
-	}
 	w.out.writeUvarint(id - w.last)
 	w.last = id
 	w.count++
