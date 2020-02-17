@@ -108,29 +108,29 @@ func (ix *IndexWriter) AddPaths(paths []string) {
 
 // AddFile adds the file with the given name (opened using os.Open)
 // to the index.  It logs errors using package log.
-func (ix *IndexWriter) AddFile(name string) {
+func (ix *IndexWriter) AddFile(name string) bool {
 	fi, err := os.Stat(name)
 	if err != nil {
 		log.Print(err)
-		return
+		return false
 	}
 	f, err := os.Open(name)
 	if err != nil {
 		log.Print(err)
-		return
+		return false
 	}
 	defer f.Close()
-	ix.Add(name, f, fi.Size())
+	return ix.Add(name, f, fi.Size())
 }
 
 // Add adds the file f to the index under the given name.
 // It logs errors using package log.
-func (ix *IndexWriter) Add(name string, f io.Reader, size int64) {
+func (ix *IndexWriter) Add(name string, f io.Reader, size int64) bool {
 	if size > ix.MaxFileLen {
 		if ix.LogSkip {
 			log.Printf("%s: too long, ignoring\n", name)
 		}
-		return
+		return false
 	}
 	ix.trigram.Reset()
 	var (
@@ -155,10 +155,10 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) {
 						break
 					}
 					log.Printf("%s: %v\n", name, err)
-					return
+					return false
 				}
 				log.Printf("%s: 0-length read\n", name)
-				return
+				return false
 			}
 			buf = buf[:n]
 			i = 0
@@ -174,7 +174,7 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) {
 					if ix.LogSkip {
 						log.Printf("%s: skipped. High invalid UTF-8 ratio. total: %d invalid: %d ratio: %f\n", name, size, inv_cnt, float64(inv_cnt)/float64(size))
 					}
-					return
+					return false
 				}
 			} else {
 				ix.trigram.Add(tv)
@@ -184,13 +184,13 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) {
 			if ix.LogSkip {
 				log.Printf("%s: skipped. Binary file. Bytes %02X%02X at offset %d\n", name, (tv>>8)&0xFF, tv&0xFF, n)
 			}
-			return
+			return false
 		}
 		if linelen++; linelen > ix.MaxLineLen {
 			if ix.LogSkip {
 				log.Printf("%s: skipped. Very long lines (%d)\n", name, linelen)
 			}
-			return
+			return false
 		}
 		if c == '\n' {
 			linelen = 0
@@ -201,14 +201,14 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) {
 			if ix.LogSkip {
 				log.Printf("%s: skipped. High invalid UTF-8 ratio. total: %d invalid: %d ratio: %f\n", name, size, inv_cnt, float64(inv_cnt)/float64(size))
 			}
-			return
+			return false
 		}
 	}
 	if ix.trigram.Len() > ix.MaxTextTrigrams {
 		if ix.LogSkip {
 			log.Printf("%s: skipped. Too many trigrams (%d > %d)\n", name, ix.trigram.Len(), ix.MaxTextTrigrams)
 		}
-		return
+		return false
 	}
 	ix.totalBytes += n
 
@@ -223,6 +223,8 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) {
 		}
 		ix.post = append(ix.post, makePostEntry(trigram, fileid))
 	}
+
+	return true
 }
 
 // Flush flushes the index entry to the target file.
@@ -338,7 +340,6 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 		// posting list
 		fileid := ^uint32(0)
 		nfile := uint32(0)
-		out.write(ix.buf[:3])
 		for ; e.trigram() == trigram && trigram != 1<<24-1; e = h.next() {
 			out.writeUvarint(e.fileid() - fileid)
 			fileid = e.fileid()

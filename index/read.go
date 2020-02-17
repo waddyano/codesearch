@@ -69,6 +69,7 @@ package index
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -111,6 +112,25 @@ func Open(file string) *Index {
 	ix.numName = int((ix.postIndex-ix.nameIndex)/4) - 1
 	ix.numPost = int((n - ix.postIndex) / postEntrySize)
 	return ix
+}
+
+func (ix *Index) Dump() {
+	fmt.Printf("pathData %d\n", ix.pathData)
+	fmt.Printf("nameData %d\n", ix.nameData)
+	fmt.Printf("postData %d\n", ix.postData)
+	fmt.Printf("nameIndex %d\n", ix.nameIndex)
+	fmt.Printf("postIndex %d\n", ix.postIndex)
+	fmt.Printf("numName %d\n", ix.numName)
+	fmt.Printf("numPost %d\n", ix.numPost)
+	fmt.Printf("name size %d\n", ix.postData-ix.nameData)
+	fmt.Printf("post size %d\n", ix.nameIndex-ix.postData)
+	for i := 0; i < ix.numName; i++ {
+		off := ix.nameData + ix.uint32(ix.nameIndex+4*uint32(i))
+		str := ix.slice(off, -1)
+		end := bytes.IndexByte(str, '\x00')
+		fmt.Printf("name %d offset %d end %d %s\n", i, off, end, str[:end])
+	}
+	ix.dumpPosting()
 }
 
 // slice returns the slice of index data starting at the given byte offset.
@@ -186,12 +206,52 @@ func (ix *Index) listAt(off uint32) (trigram, count, offset uint32) {
 
 func (ix *Index) dumpPosting() {
 	d := ix.slice(ix.postIndex, postEntrySize*ix.numPost)
+	spaceSize := uint32(0)
 	for i := 0; i < ix.numPost; i++ {
 		j := i * postEntrySize
 		t := uint32(d[j])<<16 | uint32(d[j+1])<<8 | uint32(d[j+2])
 		count := int(binary.BigEndian.Uint32(d[j+3:]))
 		offset := binary.BigEndian.Uint32(d[j+3+4:])
-		log.Printf("%#x: %d at %d", t, count, offset)
+		size := uint32(0)
+		if i != ix.numPost-1 {
+			size = binary.BigEndian.Uint32(d[j+postEntrySize+3+4:]) - offset
+		}
+		fmt.Printf("%#x: %d at %d - size %d\n", t, count, offset, size)
+		w := 0
+		for b := 0; b < 3; b++ {
+			c := byte(t & 0xff)
+			if c == 0x09 || c == 0x0a || c == 0x0d || c == 0x20 {
+				w++
+			}
+			t = t >> 8
+		}
+		if w > 1 {
+			spaceSize += size
+			fmt.Printf("spacey!!!!!!! %d\n", spaceSize)
+		}
+
+		postd := ix.slice(ix.postData+offset, -1)
+		fileid := ^uint32(0)
+		run := 0
+		for k := 0; k < count; k++ {
+			delta64, n := binary.Uvarint(postd)
+			if delta64 == 1 {
+				run++
+			} else {
+				if run > 5 {
+					fmt.Printf("run of ones %d\n", run)
+				}
+				run = 0
+			}
+			postd = postd[n:]
+			fileid = fileid + uint32(delta64)
+			if count == 1 {
+				fmt.Printf("del %d n %d file id %d\n", delta64, n, fileid)
+			}
+		}
+		if run > 0 {
+			fmt.Printf("run of ones %d\n", run)
+		}
 	}
 }
 
@@ -234,7 +294,7 @@ func (r *postReader) init(ix *Index, trigram uint32, restrict []uint32) {
 	r.count = count
 	r.offset = offset
 	r.fileid = ^uint32(0)
-	r.d = ix.slice(ix.postData+offset+3, -1)
+	r.d = ix.slice(ix.postData+offset, -1)
 	r.restrict = restrict
 }
 
