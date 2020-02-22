@@ -16,7 +16,7 @@ import (
 	"regexp/syntax"
 	"sort"
 
-	"github.com/junkblocker/codesearch/sparse"
+	"github.com/waddyano/codesearch/sparse"
 )
 
 // A matcher holds the state for running regular expression search.

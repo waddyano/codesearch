@@ -12,7 +12,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/junkblocker/codesearch/index"
+	"github.com/waddyano/codesearch/index"
 )
 
 var usageMessage = `usage: cdump [options]

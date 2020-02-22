@@ -13,8 +13,8 @@ import (
 	"os"
 	"runtime/pprof"
 
-	"github.com/junkblocker/codesearch/index"
-	"github.com/junkblocker/codesearch/regexp"
+	"github.com/waddyano/codesearch/index"
+	"github.com/waddyano/codesearch/regexp"
 )
 
 var usageMessage = `usage: csearch [options] regexp

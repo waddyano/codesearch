@@ -2,20 +2,20 @@
 
 ## To install this fork
 
-    go get -u github.com/junkblocker/codesearch/cmd/cindex
-    go get -u github.com/junkblocker/codesearch/cmd/csearch
-    go get -u github.com/junkblocker/codesearch/cmd/cgrep
+    go get -u github.com/waddyano/codesearch/cmd/cindex
+    go get -u github.com/waddyano/codesearch/cmd/csearch
+    go get -u github.com/waddyano/codesearch/cmd/cgrep
 
 ## Prebuilt binaries
 
-New releases [https://github.com/junkblocker/codesearch/releases](https://github.com/junkblocker/codesearch/releases)
+New releases [https://github.com/waddyano/codesearch/releases](https://github.com/waddyano/codesearch/releases)
 
-Old releases [https://github.com/junkblocker/codesearch-pre-github/releases](https://github.com/junkblocker/codesearch-pre-github/releases)
+Old releases [https://github.com/waddyano/codesearch-pre-github/releases](https://github.com/waddyano/codesearch-pre-github/releases)
 
 
 ### Old fork pre-"Google on Github" days
 
-[https://github.com/junkblocker/codesearch-pre-github](https://github.com/junkblocker/codesearch-pre-github)
+[https://github.com/waddyano/codesearch-pre-github](https://github.com/waddyano/codesearch-pre-github)
 
 
 ## Original Google codesearch README content
