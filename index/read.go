@@ -75,6 +75,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+
+	"github.com/klauspost/compress/s2"
+	"github.com/pierrec/lz4"
 )
 
 const (
@@ -207,6 +210,11 @@ func (ix *Index) listAt(off uint32) (trigram, count, offset uint32) {
 func (ix *Index) dumpPosting() {
 	d := ix.slice(ix.postIndex, postEntrySize*ix.numPost)
 	spaceSize := uint32(0)
+	ht := make([]int, 65536)
+	totorig := 0
+	tots2 := 0
+	totlz4 := 0
+	totrun := 0
 	for i := 0; i < ix.numPost; i++ {
 		j := i * postEntrySize
 		t := uint32(d[j])<<16 | uint32(d[j+1])<<8 | uint32(d[j+2])
@@ -215,6 +223,8 @@ func (ix *Index) dumpPosting() {
 		size := uint32(0)
 		if i != ix.numPost-1 {
 			size = binary.BigEndian.Uint32(d[j+postEntrySize+3+4:]) - offset
+		} else {
+			size = ix.nameIndex - ix.postData - offset
 		}
 		fmt.Printf("%#x: %d at %d - size %d\n", t, count, offset, size)
 		w := 0
@@ -233,13 +243,16 @@ func (ix *Index) dumpPosting() {
 		postd := ix.slice(ix.postData+offset, -1)
 		fileid := ^uint32(0)
 		run := 0
+		used := 0
 		for k := 0; k < count; k++ {
 			delta64, n := binary.Uvarint(postd)
+			used += n
 			if delta64 == 1 {
 				run++
 			} else {
 				if run > 5 {
 					fmt.Printf("run of ones %d\n", run)
+					totrun += run
 				}
 				run = 0
 			}
@@ -249,10 +262,27 @@ func (ix *Index) dumpPosting() {
 				fmt.Printf("del %d n %d file id %d\n", delta64, n, fileid)
 			}
 		}
+		encoded := s2.Encode(nil, ix.slice(ix.postData+offset, int(size)))
+		lz4encoded := make([]byte, lz4.CompressBlockBound(int(size)))
+		sz, _ := lz4.CompressBlock(ix.slice(ix.postData+offset, int(size)), lz4encoded, ht)
+		totorig += int(size)
+		if int(size) < len(encoded) {
+			tots2 += int(size)
+		} else {
+			tots2 += len(encoded)
+		}
+		if sz == 0 {
+			totlz4 += int(size)
+		} else {
+			totlz4 += sz
+		}
+		fmt.Printf("%d,%d compressed to %d, lz4 %d\n", size, used, len(encoded), sz)
 		if run > 0 {
 			fmt.Printf("run of ones %d\n", run)
+			totrun += run
 		}
 	}
+	fmt.Printf("post sizes %d s2 %d lz4 %d totrun %d\n", totorig, tots2, totlz4, totrun)
 }
 
 func (ix *Index) findList(trigram uint32) (count int, offset uint32) {
@@ -279,6 +309,7 @@ func (ix *Index) findList(trigram uint32) (count int, offset uint32) {
 type postReader struct {
 	ix       *Index
 	count    int
+	runCount int
 	offset   uint32
 	fileid   uint32
 	d        []byte
@@ -292,26 +323,36 @@ func (r *postReader) init(ix *Index, trigram uint32, restrict []uint32) {
 	}
 	r.ix = ix
 	r.count = count
+	r.runCount = 0
 	r.offset = offset
 	r.fileid = ^uint32(0)
 	r.d = ix.slice(ix.postData+offset, -1)
 	r.restrict = restrict
 }
 
-func (r *postReader) max() int {
-	return int(r.count)
+func (r *postReader) numFilesEstimate() int {
+	return int(r.count + r.count/4)
 }
 
 func (r *postReader) next() bool {
-	for r.count > 0 {
-		r.count--
-		delta64, n := binary.Uvarint(r.d)
-		delta := uint32(delta64)
-		if n <= 0 || delta == 0 {
-			corrupt()
+	for r.count > 0 || r.runCount > 0 {
+		if r.runCount > 0 {
+			r.fileid += 1
+			r.runCount--
+		} else {
+			r.count--
+			vi, n := binary.Uvarint(r.d)
+			if n <= 0 || vi == 0 {
+				corrupt()
+			}
+			r.d = r.d[n:]
+			if vi <= 31 {
+				r.runCount = int(vi - 1)
+				r.fileid += 1
+			} else {
+				r.fileid += uint32(vi) - 30
+			}
 		}
-		r.d = r.d[n:]
-		r.fileid += delta
 		if r.restrict != nil {
 			i := 0
 			for i < len(r.restrict) && r.restrict[i] < r.fileid {
@@ -339,7 +380,8 @@ func (ix *Index) PostingList(trigram uint32) []uint32 {
 func (ix *Index) postingList(trigram uint32, restrict []uint32) []uint32 {
 	var r postReader
 	r.init(ix, trigram, restrict)
-	x := make([]uint32, 0, r.max())
+	x := make([]uint32, 0, r.numFilesEstimate())
+	// it is possible the append will reallocate
 	for r.next() {
 		x = append(x, r.fileid)
 	}
@@ -375,8 +417,9 @@ func (ix *Index) PostingOr(list []uint32, trigram uint32) []uint32 {
 func (ix *Index) postingOr(list []uint32, trigram uint32, restrict []uint32) []uint32 {
 	var r postReader
 	r.init(ix, trigram, restrict)
-	x := make([]uint32, 0, len(list)+r.max())
+	x := make([]uint32, 0, len(list)+r.numFilesEstimate())
 	i := 0
+	// it is possible the appends will reallocate
 	for r.next() {
 		fileid := r.fileid
 		for i < len(list) && list[i] < fileid {

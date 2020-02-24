@@ -340,10 +340,31 @@ func (ix *IndexWriter) mergePost(out *bufWriter) {
 		// posting list
 		fileid := ^uint32(0)
 		nfile := uint32(0)
+		runCount := uint32(0)
 		for ; e.trigram() == trigram && trigram != 1<<24-1; e = h.next() {
-			out.writeUvarint(e.fileid() - fileid)
+			delta := e.fileid() - fileid
+			if delta != 1 {
+				if runCount > 0 {
+					out.writeUvarint(runCount)
+					nfile++
+					runCount = 0
+				}
+				out.writeUvarint(delta + 30)
+				nfile++
+			} else {
+				runCount++
+				if runCount == 31 {
+					out.writeUvarint(runCount)
+					nfile++
+					runCount = 0
+				}
+			}
 			fileid = e.fileid()
+		}
+		if runCount > 0 {
+			out.writeUvarint(runCount)
 			nfile++
+			runCount = 0
 		}
 		out.writeUvarint(0)
 
