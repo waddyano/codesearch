@@ -117,8 +117,16 @@ func Open(file string) *Index {
 	return ix
 }
 
-func (ix *Index) Dump() {
+type DumpOptions struct {
+	Names bool
+	Posts bool
+}
+
+func (ix *Index) Dump(options *DumpOptions) {
 	fmt.Printf("pathData %d\n", ix.pathData)
+	for i, p := range ix.Paths() {
+		fmt.Printf("  %d %s\n", i, p)
+	}
 	fmt.Printf("nameData %d\n", ix.nameData)
 	fmt.Printf("postData %d\n", ix.postData)
 	fmt.Printf("nameIndex %d\n", ix.nameIndex)
@@ -127,13 +135,17 @@ func (ix *Index) Dump() {
 	fmt.Printf("numPost %d\n", ix.numPost)
 	fmt.Printf("name size %d\n", ix.postData-ix.nameData)
 	fmt.Printf("post size %d\n", ix.nameIndex-ix.postData)
-	for i := 0; i < ix.numName; i++ {
-		off := ix.nameData + ix.uint32(ix.nameIndex+4*uint32(i))
-		str := ix.slice(off, -1)
-		end := bytes.IndexByte(str, '\x00')
-		fmt.Printf("name %d offset %d end %d %s\n", i, off, end, str[:end])
+	if options.Names {
+		for i := 0; i < ix.numName; i++ {
+			off := ix.nameData + ix.uint32(ix.nameIndex+4*uint32(i))
+			str := ix.slice(off, -1)
+			end := bytes.IndexByte(str, '\x00')
+			fmt.Printf("name %d offset %d end %d %s\n", i, off, end, str[:end])
+		}
 	}
-	ix.dumpPosting()
+	if options.Posts {
+		ix.dumpPosting()
+	}
 }
 
 // slice returns the slice of index data starting at the given byte offset.

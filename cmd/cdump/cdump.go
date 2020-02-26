@@ -51,6 +51,7 @@ var (
 func Main() {
 	flag.Usage = usage
 	flag.Parse()
+	var options index.DumpOptions
 	args := flag.Args()
 
 	if len(args) != 0 {
@@ -65,7 +66,7 @@ func Main() {
 	}
 
 	ix := index.Open(index.File())
-	ix.Dump()
+	ix.Dump(&options)
 	ix.Verbose = *verboseFlag
 }
 
