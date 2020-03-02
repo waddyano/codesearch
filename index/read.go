@@ -81,8 +81,8 @@ import (
 )
 
 const (
-	magic        = "csearch index 1\n"
-	trailerMagic = "\ncsearch trailr\n"
+	magic        = "csearch index 2\n"
+	trailerMagic = "\ncsearch trail2\n"
 )
 
 // An Index implements read-only access to a trigram index.
@@ -138,9 +138,11 @@ func (ix *Index) Dump(options *DumpOptions) {
 	if options.Names {
 		for i := 0; i < ix.numName; i++ {
 			off := ix.nameData + ix.uint32(ix.nameIndex+4*uint32(i))
-			str := ix.slice(off, -1)
+			s := ix.slice(off, -1)
+			rootNo, n := binary.Uvarint(s)
+			str := s[n:]
 			end := bytes.IndexByte(str, '\x00')
-			fmt.Printf("name %d offset %d end %d %s\n", i, off, end, str[:end])
+			fmt.Printf("name %d offset %d end %d root %d %s\n", i, off, end, rootNo, str[:end])
 		}
 	}
 	if options.Posts {
@@ -190,10 +192,22 @@ func (ix *Index) Paths() []string {
 	return x
 }
 
-// NameBytes returns the name corresponding to the given fileid.
-func (ix *Index) NameBytes(fileid uint32) []byte {
+// Name returns the name corresponding to the given fileid.
+func (ix *Index) Name(fileid uint32) string {
 	off := ix.uint32(ix.nameIndex + 4*fileid)
-	return ix.str(ix.nameData + off)
+	s := ix.slice(ix.nameData+off, -1)
+	rootNo, n := binary.Uvarint(s)
+	if rootNo == 0 {
+		return string(ix.str(ix.nameData + off + uint32(n)))
+	}
+	return ix.Paths()[rootNo-1] + string(ix.str(ix.nameData+off+uint32(n)))
+}
+
+func (ix *Index) RootNoAndName(fileid uint32) (uint32, string) {
+	off := ix.uint32(ix.nameIndex + 4*fileid)
+	s := ix.slice(ix.nameData+off, -1)
+	rootNo, n := binary.Uvarint(s)
+	return uint32(rootNo), string(ix.str(ix.nameData + off + uint32(n)))
 }
 
 func (ix *Index) str(off uint32) []byte {
@@ -203,11 +217,6 @@ func (ix *Index) str(off uint32) []byte {
 		corrupt()
 	}
 	return str[:i]
-}
-
-// Name returns the name corresponding to the given fileid.
-func (ix *Index) Name(fileid uint32) string {
-	return string(ix.NameBytes(fileid))
 }
 
 // listAt returns the index list entry at the given offset.

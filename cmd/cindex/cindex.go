@@ -118,9 +118,13 @@ type walkStats struct {
 	nFiles       int
 	nDirectories int
 	nSkipped     int
+	extCounts    map[string]int
 }
 
-func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, logskip bool) {
+func walk(rootNo int, arg string, stats *walkStats, symlinkFrom string, out chan struct {
+	int
+	string
+}, logskip bool) {
 	filepath.Walk(arg, func(path string, info os.FileInfo, err error) error {
 		if info != nil && info.IsDir() {
 			stats.nDirectories++
@@ -156,6 +160,8 @@ func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, log
 					return filepath.SkipDir
 				}
 			} else {
+				ext := filepath.Ext(path)
+				stats.extCounts[ext]++
 				if exclude {
 					stats.nSkipped++
 					if logskip {
@@ -190,7 +196,7 @@ func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, log
 							log.Printf("%s: skipped. Symlink could not be resolved", path)
 						}
 					} else {
-						walk(p, stats, symlinkAs, out, logskip)
+						walk(rootNo, p, stats, symlinkAs, out, logskip)
 					}
 					return nil
 				}
@@ -207,9 +213,15 @@ func walk(arg string, stats *walkStats, symlinkFrom string, out chan string, log
 		if info != nil {
 			if info.Mode()&os.ModeType == 0 {
 				if symlinkFrom == "" {
-					out <- path
+					out <- struct {
+						int
+						string
+					}{rootNo, path}
 				} else {
-					out <- symlinkFrom + path[len(arg):]
+					out <- struct {
+						int
+						string
+					}{-1, symlinkFrom + path[len(arg):]}
 				}
 			} else if !info.IsDir() {
 				if logskip {
@@ -369,7 +381,10 @@ func main() {
 	ix.MaxInvalidUTF8Ratio = *maxInvalidUTF8Ratio
 	ix.AddPaths(args)
 
-	walkChan := make(chan string, 10000)
+	walkChan := make(chan struct {
+		int
+		string
+	}, 10000)
 	doneChan := make(chan bool)
 
 	go func() {
@@ -377,7 +392,8 @@ func main() {
 		nProcessed := 0
 		nAdded := 0
 		for {
-			path := <-walkChan
+			rootAndPath := <-walkChan
+			path := rootAndPath.string
 			if path == "" {
 				log.Printf("added %d/%d files", nAdded, nProcessed)
 				doneChan <- true
@@ -386,7 +402,7 @@ func main() {
 
 			if !seen[path] {
 				seen[path] = true
-				if ix.AddFile(path) {
+				if ix.AddFile(rootAndPath.int, path) {
 					nAdded++
 				}
 				nProcessed++
@@ -398,14 +414,29 @@ func main() {
 	}()
 
 	var stats walkStats
+	stats.extCounts = make(map[string]int)
 
-	for _, arg := range args {
+	for i, arg := range args {
 		log.Printf("index %s", arg)
-		walk(arg, &stats, "", walkChan, *logSkipFlag)
+		walk(i, arg, &stats, "", walkChan, *logSkipFlag)
 	}
-	log.Printf("walk done %d", stats.nFiles)
+	log.Printf("walk done %d files %d directories, %d skipped", stats.nFiles, stats.nDirectories, stats.nSkipped)
+
+	extArray := make([]string, 0, len(stats.extCounts))
+	for ext, _ := range stats.extCounts {
+		extArray = append(extArray, ext)
+	}
+
+	sort.Strings(extArray)
+
+	for _, ext := range extArray {
+		fmt.Printf("%s %d\n", ext, stats.extCounts[ext])
+	}
 	//doneChan <- true
-	walkChan <- ""
+	walkChan <- struct {
+		int
+		string
+	}{-1, ""}
 	<-doneChan
 	log.Printf("flush index")
 	ix.Flush()

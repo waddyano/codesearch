@@ -34,6 +34,7 @@ package index
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -86,7 +87,7 @@ func Merge(dst, src1, src2 string) {
 		// Because we are iterating over the ix2 paths,
 		// there can't be gaps, so it must start at i2.
 		if i2 < uint32(ix2.numName) && ix2.Name(i2) < path {
-			panic("merge: inconsistent index")
+			panic(fmt.Sprintf("merge: inconsistent index %s %s", ix2.Name(i2), path))
 		}
 		lo = i2
 		for i2 < uint32(ix2.numName) && ix2.Name(i2) < limit {
@@ -143,8 +144,10 @@ func Merge(dst, src1, src2 string) {
 	for new < numName {
 		if mi1 < len(map1) && map1[mi1].new == new {
 			for i := map1[mi1].lo; i < map1[mi1].hi; i++ {
-				name := ix1.Name(i)
+				root1, name := ix1.RootNoAndName(i)
 				nameIndexFile.writeUint32(ix3.offset() - nameData)
+				// need to map to possible new root
+				ix3.writeUvarint(root1)
 				ix3.writeString(name)
 				ix3.writeString("\x00")
 				new++
@@ -152,8 +155,10 @@ func Merge(dst, src1, src2 string) {
 			mi1++
 		} else if mi2 < len(map2) && map2[mi2].new == new {
 			for i := map2[mi2].lo; i < map2[mi2].hi; i++ {
-				name := ix2.Name(i)
+				root2, name := ix2.RootNoAndName(i)
 				nameIndexFile.writeUint32(ix3.offset() - nameData)
+				// need to map to possible new root
+				ix3.writeUvarint(root2)
 				ix3.writeString(name)
 				ix3.writeString("\x00")
 				new++

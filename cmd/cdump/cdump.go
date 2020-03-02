@@ -19,22 +19,9 @@ var usageMessage = `usage: cdump [options]
 
 Options:
 
-  -c           print only a count of selected lines to stdout
-               (Not meaningful with -l or -M modes)
-  -f PATHREGEXP
-               search only files with names matching this regexp
-  -h           print this help text and exit
-  -i           case-insensitive search
-  -l           print only the names of the files containing matches
-               (Not meaningful with -c or -M modes)
-  -0           print -l matches separated by NUL ('\0') character
-  -m MAXCOUNT  limit search output results to MAXCOUNT (0: no limit)
-  -M MAXCOUNT  limit search output results to MAXCOUNT per file (0: no limit)
-               (Not allowed with -c or -l modes)
-  -n           print each output line preceded by its relative line number in
-               the file, starting at 1
   -indexpath FILE
-               use specified FILE as the index path. Overrides $CSEARCHINDEX.
+			   use specified FILE as the index path. Overrides $CSEARCHINDEX.
+  -names       print path names in index
   -verbose     print extra information
 `
 
@@ -46,6 +33,7 @@ func usage() {
 var (
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
 	indexPath   = flag.String("indexpath", "", "specifies index path")
+	names       = flag.Bool("names", false, "print path names in index")
 )
 
 func Main() {
@@ -65,6 +53,7 @@ func Main() {
 		}
 	}
 
+	options.Names = *names
 	ix := index.Open(index.File())
 	ix.Dump(&options)
 	ix.Verbose = *verboseFlag

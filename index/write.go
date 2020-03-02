@@ -108,7 +108,7 @@ func (ix *IndexWriter) AddPaths(paths []string) {
 
 // AddFile adds the file with the given name (opened using os.Open)
 // to the index.  It logs errors using package log.
-func (ix *IndexWriter) AddFile(name string) bool {
+func (ix *IndexWriter) AddFile(rootNo int, name string) bool {
 	fi, err := os.Stat(name)
 	if err != nil {
 		log.Print(err)
@@ -120,12 +120,12 @@ func (ix *IndexWriter) AddFile(name string) bool {
 		return false
 	}
 	defer f.Close()
-	return ix.Add(name, f, fi.Size())
+	return ix.Add(rootNo, name, f, fi.Size())
 }
 
 // Add adds the file f to the index under the given name.
 // It logs errors using package log.
-func (ix *IndexWriter) Add(name string, f io.Reader, size int64) bool {
+func (ix *IndexWriter) Add(rootNo int, name string, f io.Reader, size int64) bool {
 	if size > ix.MaxFileLen {
 		if ix.LogSkip {
 			log.Printf("%s: too long, ignoring\n", name)
@@ -216,7 +216,7 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) bool {
 		log.Printf("%d %d %s\n", n, ix.trigram.Len(), name)
 	}
 
-	fileid := ix.addName(name)
+	fileid := ix.addName(rootNo, name)
 	for _, trigram := range ix.trigram.Dense() {
 		if len(ix.post) >= cap(ix.post) {
 			ix.flushPost()
@@ -229,7 +229,7 @@ func (ix *IndexWriter) Add(name string, f io.Reader, size int64) bool {
 
 // Flush flushes the index entry to the target file.
 func (ix *IndexWriter) Flush() {
-	ix.addName("")
+	ix.addName(-1, "")
 
 	var off [5]uint32
 	ix.main.writeString(magic)
@@ -274,12 +274,19 @@ func copyFile(dst, src *bufWriter) {
 
 // addName adds the file with the given name to the index.
 // It returns the assigned file ID number.
-func (ix *IndexWriter) addName(name string) uint32 {
+func (ix *IndexWriter) addName(rootNo int, name string) uint32 {
 	if strings.Contains(name, "\x00") {
 		log.Fatalf("%q: file has NUL byte in name", name)
 	}
 
 	ix.nameIndex.writeUint32(ix.nameData.offset())
+	ix.nameData.writeUvarint(uint32(rootNo + 1))
+	if rootNo >= 0 {
+		rl := len(ix.paths[rootNo])
+		if name[:rl] == ix.paths[rootNo] {
+			name = name[rl:]
+		}
+	}
 	ix.nameData.writeString(name)
 	ix.nameData.writeByte(0)
 	id := ix.numName

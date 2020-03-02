@@ -87,6 +87,11 @@ var trivialIndex = join(
 	"\ncsearch trailr\n",
 )
 
+type fileData struct {
+	rootNo int
+	name   string
+}
+
 func join(s ...string) string {
 	return strings.Join(s, "")
 }
@@ -127,7 +132,7 @@ func buildFlushIndex(t *testing.T, out string, paths []string, doFlush bool, fil
 	sort.Strings(files)
 	for _, name := range files {
 		r := strings.NewReader(fileData[name])
-		ix.Add(name, r, int64(r.Len()))
+		ix.Add(-1, name, r, int64(r.Len()))
 	}
 	if doFlush {
 		ix.flushPost()
