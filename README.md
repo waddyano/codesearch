@@ -1,22 +1,20 @@
-# A fork of Google Code Search to  make it a more generally usable tool
+# A fork of a fork of Google Code Search 
+
+    From junkblocker's fork of the original - though still somewhat of an experiment to see how well it works
+
+    Changes include:
+
+    - Fixed windows mapping handling so indices over 1Gb work
+    - Removed an unused copy of trigram from index
+    - Simple run length encoding of deltas of 1 to reduce post size
+    - Don't store root directory on every file name but reference the entry in the list of root directories
+    - Concurrent grepping on files that are selected from the index
 
 ## To install this fork
 
     go get -u github.com/waddyano/codesearch/cmd/cindex
     go get -u github.com/waddyano/codesearch/cmd/csearch
     go get -u github.com/waddyano/codesearch/cmd/cgrep
-
-## Prebuilt binaries
-
-New releases [https://github.com/waddyano/codesearch/releases](https://github.com/waddyano/codesearch/releases)
-
-Old releases [https://github.com/waddyano/codesearch-pre-github/releases](https://github.com/waddyano/codesearch-pre-github/releases)
-
-
-### Old fork pre-"Google on Github" days
-
-[https://github.com/waddyano/codesearch-pre-github](https://github.com/waddyano/codesearch-pre-github)
-
 
 ## Original Google codesearch README content
 

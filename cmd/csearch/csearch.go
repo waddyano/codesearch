@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"runtime/pprof"
+	"sync"
 
 	"github.com/waddyano/codesearch/index"
 	"github.com/waddyano/codesearch/regexp"
@@ -75,6 +77,7 @@ var (
 	indexPath       = flag.String("indexpath", "", "specifies index path")
 	maxCount        = flag.Int64("m", 0, "specified maximum number of search results")
 	maxCountPerFile = flag.Int64("M", 0, "specified maximum number of search results per file")
+	oneThread       = flag.Bool("1", false, "only use on thread")
 
 	matches bool
 )
@@ -163,16 +166,52 @@ func Main() {
 
 	g.LimitPrintCount(*maxCount, *maxCountPerFile)
 
-	for _, fileid := range post {
-		name := ix.Name(fileid)
-		g.File(name)
-		// short circuit here too
-		if g.Done {
-			break
-		}
-	}
+	fileChan := make(chan string)
 
-	matches = g.Match
+	if *oneThread {
+		for _, fileid := range post {
+			name := ix.Name(fileid)
+			g.File(name)
+			// short circuit here too
+			if g.Done {
+				break
+			}
+		}
+
+		matches = g.Match
+	} else {
+		var wg sync.WaitGroup
+		nParallel := runtime.GOMAXPROCS(0)
+		wg.Add(nParallel)
+
+		for ii := 0; ii < nParallel; ii++ {
+			pg := g
+			pre, err := regexp.Compile(pat)
+			if err != nil {
+				log.Fatal(err)
+			}
+			pg.Regexp = pre
+			go func(fileChan chan string, myg regexp.Grep) {
+				for {
+					name, more := <-fileChan
+					if !more {
+						wg.Done()
+						return
+					}
+
+					myg.File(name)
+				}
+			}(fileChan, pg)
+		}
+
+		for _, fileid := range post {
+			name := ix.Name(fileid)
+			fileChan <- name
+		}
+
+		close(fileChan)
+		wg.Wait()
+	}
 }
 
 func main() {
